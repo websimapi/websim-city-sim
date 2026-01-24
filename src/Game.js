@@ -8,7 +8,11 @@ export class Game {
         this.ui = new UIManager(this);
         this.entities = new EntityManager(this.world);
         this.lastTime = 0;
-        this.isPlaying = false; // "Playing" as in active gameplay, otherwise it's just screensaver
+        this.isPlaying = false;
+        
+        // Cinematic camera settings
+        this.camTimer = 0;
+        this.camTarget = null;
     }
 
     init() {
@@ -43,7 +47,7 @@ export class Game {
             
             // Camera logic
             if (!this.isPlaying) {
-                this.world.orbitCamera(dt);
+                this.updateCinematicCamera(dt);
             }
         }
 
@@ -64,5 +68,23 @@ export class Game {
     exitGameMode() {
         this.isPlaying = false;
         this.ui.setHUDVisible(false);
+    }
+
+    updateCinematicCamera(dt) {
+        this.camTimer -= dt;
+        
+        // Switch target periodically
+        if (this.camTimer <= 0) {
+            this.camTimer = 8 + Math.random() * 5; // 8-13 seconds
+            this.camTarget = this.entities.getRandomPedestrian();
+        }
+
+        if (this.camTarget && this.camTarget.mesh) {
+            this.world.followTarget(this.camTarget.mesh.position, dt);
+        } else {
+            // Fallback if no target or target disappeared
+            this.world.orbitCamera(dt);
+            this.camTarget = this.entities.getRandomPedestrian();
+        }
     }
 }

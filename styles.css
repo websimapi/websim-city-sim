@@ -30,9 +30,22 @@ body {
     align-items: center;
 }
 
-#title-screen, #settings-screen {
+#title-screen {
     pointer-events: auto;
-    background: rgba(0, 0, 0, 0.6);
+    /* Transparent/See-through as requested */
+    padding: 20px;
+    text-align: center;
+    transition: opacity 0.3s ease;
+    position: absolute;
+    bottom: 50px; /* Position at bottom for better view */
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+#settings-screen, #char-creation-screen {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(10px);
     padding: 40px;
     border-radius: 20px;
@@ -41,39 +54,36 @@ body {
     min-width: 300px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     transition: opacity 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .hidden {
     display: none !important;
 }
 
-.title {
-    font-size: 3rem;
-    margin-bottom: 2rem;
-    font-weight: 800;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    background: linear-gradient(45deg, #ff6b6b, #feca57);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
 .menu {
     display: flex;
-    flex-direction: column;
+    flex-direction: row; /* Horizontal menu for cleaner look at bottom */
     gap: 15px;
 }
 
 .btn {
-    padding: 15px 30px;
-    font-size: 1.2rem;
+    padding: 12px 24px;
+    font-size: 1.1rem;
     border: none;
-    border-radius: 8px;
-    background: white;
+    border-radius: 30px; /* More rounded */
+    background: rgba(255, 255, 255, 0.9);
     color: #333;
     cursor: pointer;
-    transition: transform 0.1s, background 0.2s;
+    transition: transform 0.1s, background 0.2s, box-shadow 0.2s;
     font-weight: bold;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+.btn.primary {
+    background: linear-gradient(45deg, #ff6b6b, #feca57);
+    color: white;
 }
 
 .btn:active {
@@ -92,8 +102,42 @@ body {
     gap: 10px;
 }
 
-input[type=range] {
+input[type=range], input[type=text] {
     width: 100%;
+    padding: 10px;
+    border-radius: 5px;
+    border: none;
+    font-family: inherit;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+.color-options {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.color-opt {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: transform 0.2s;
+}
+
+.color-opt.selected {
+    border-color: white;
+    transform: scale(1.1);
+}
+
+.menu-row {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+    justify-content: center;
 }
 
 #hud {

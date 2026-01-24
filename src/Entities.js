@@ -260,4 +260,12 @@ export class EntityManager {
         }
         return best;
     }
+
+    getRandomPedestrian() {
+        if (this.pedestrians.length === 0) return null;
+        // Filter active ones (visible)
+        const active = this.pedestrians.filter(p => p.state !== 'DRIVING');
+        if (active.length === 0) return this.pedestrians[0];
+        return active[Math.floor(Math.random() * active.length)];
+    }
 }

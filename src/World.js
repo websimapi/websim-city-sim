@@ -49,13 +49,26 @@ export class World {
     }
 
     orbitCamera(dt) {
-        // Slow rotation around the center
-        this.cameraAngle += dt * 0.1;
+        // Fallback or high altitude view
+        this.cameraAngle += dt * 0.05;
         const radius = 60;
         this.camera.position.x = Math.sin(this.cameraAngle) * radius;
         this.camera.position.z = Math.cos(this.cameraAngle) * radius;
         this.camera.position.y = 40;
         this.camera.lookAt(0, 0, 0);
+    }
+
+    followTarget(targetPos, dt) {
+        if (!targetPos) return;
+        
+        // Smooth follow
+        // Desired position: slightly above and behind (iso view)
+        const offset = new THREE.Vector3(20, 20, 20); 
+        const desiredPos = targetPos.clone().add(offset);
+        
+        // Lerp camera position
+        this.camera.position.lerp(desiredPos, dt * 2);
+        this.camera.lookAt(targetPos);
     }
 
     render() {

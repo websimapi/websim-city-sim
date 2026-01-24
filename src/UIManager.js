@@ -8,6 +8,7 @@ export class UIManager {
         this.overlay = document.getElementById('ui-overlay');
         this.titleScreen = document.getElementById('title-screen');
         this.settingsScreen = document.getElementById('settings-screen');
+        this.charScreen = document.getElementById('char-creation-screen');
         this.hud = document.getElementById('hud');
         
         this.btnContinue = document.getElementById('btn-continue');
@@ -16,8 +17,14 @@ export class UIManager {
         this.btnBack = document.getElementById('btn-back');
         this.btnMenu = document.getElementById('btn-menu');
         
+        this.btnConfirmChar = document.getElementById('btn-confirm-char');
+        this.btnCancelChar = document.getElementById('btn-cancel-char');
+        
         this.statPop = document.getElementById('stat-pop');
         this.statCars = document.getElementById('stat-cars');
+
+        this.selectedColor = '0xff6b6b';
+        this.charNameInput = document.getElementById('char-name');
     }
 
     init() {
@@ -30,9 +37,25 @@ export class UIManager {
         // Bind Events
         this.btnStart.addEventListener('click', () => {
             this.audio.playClick();
+            this.titleScreen.classList.add('hidden');
+            this.charScreen.classList.remove('hidden');
+        });
+
+        this.btnConfirmChar.addEventListener('click', () => {
+            this.audio.playClick();
+            const name = this.charNameInput.value || "Citizen";
             this.game.resetSimulation();
+            // TODO: Pass character data if needed
             this.transitionToGame();
         });
+
+        this.btnCancelChar.addEventListener('click', () => {
+            this.audio.playClick();
+            this.charScreen.classList.add('hidden');
+            this.titleScreen.classList.remove('hidden');
+        });
+
+        this.setupColorPicker();
 
         this.btnContinue.addEventListener('click', () => {
             this.audio.playClick();
@@ -62,8 +85,21 @@ export class UIManager {
         }, { once: true });
     }
 
+    setupColorPicker() {
+        const options = document.querySelectorAll('.color-opt');
+        options.forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                this.audio.playClick();
+                options.forEach(o => o.classList.remove('selected'));
+                e.target.classList.add('selected');
+                this.selectedColor = e.target.dataset.color;
+            });
+        });
+    }
+
     transitionToGame() {
         this.titleScreen.classList.add('hidden');
+        this.charScreen.classList.add('hidden');
         this.game.enterGameMode();
     }
 

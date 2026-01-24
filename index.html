@@ -19,11 +19,31 @@
     
     <div id="ui-overlay">
         <div id="title-screen">
-            <h1 class="title">METRO LOOP</h1>
             <div class="menu">
                 <button id="btn-continue" class="btn hidden">Continue</button>
                 <button id="btn-start" class="btn">New City</button>
                 <button id="btn-settings" class="btn">Settings</button>
+            </div>
+        </div>
+
+        <div id="char-creation-screen" class="hidden">
+            <h2>New Resident</h2>
+            <div class="setting-row">
+                <label>Name</label>
+                <input type="text" id="char-name" value="Citizen" maxlength="12">
+            </div>
+            <div class="setting-row">
+                <label>Shirt Color</label>
+                <div id="color-options" class="color-options">
+                    <div class="color-opt selected" style="background: #ff6b6b;" data-color="0xff6b6b"></div>
+                    <div class="color-opt" style="background: #54a0ff;" data-color="0x54a0ff"></div>
+                    <div class="color-opt" style="background: #1dd1a1;" data-color="0x1dd1a1"></div>
+                    <div class="color-opt" style="background: #feca57;" data-color="0xfeca57"></div>
+                </div>
+            </div>
+            <div class="menu-row">
+                <button id="btn-cancel-char" class="btn">Back</button>
+                <button id="btn-confirm-char" class="btn primary">Enter City</button>
             </div>
         </div>
         
