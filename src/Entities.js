@@ -1,29 +1,24 @@
 import * as THREE from 'three';
 
-class Entity {
+class Car {
+    constructor(mesh, lane) {
+        this.mesh = mesh;
+        this.currentLane = lane;
+        this.t = 0; // 0 to 1 along lane
+        this.speed = 15; // Units per second
+        this.state = 'DRIVING'; // DRIVING, WAITING
+        
+        // For curve interpolation
+        this.curve = null;
+        this.curveT = 0;
+    }
+}
+
+class Pedestrian {
     constructor(mesh) {
         this.mesh = mesh;
-        this.active = true;
         this.target = new THREE.Vector3();
-    }
-}
-
-class Car extends Entity {
-    constructor(mesh) {
-        super(mesh);
-        this.speed = 0;
-        this.state = 'PARKED'; // PARKED, DRIVING, FINDING_SPOT
-        this.dir = new THREE.Vector3(0, 0, 1);
-        this.passenger = null; // Associated pedestrian
-    }
-}
-
-class Pedestrian extends Entity {
-    constructor(mesh) {
-        super(mesh);
-        this.speed = 2;
-        this.state = 'WANDERING'; // WANDERING, GOING_TO_CAR, DRIVING (hidden)
-        this.targetCar = null;
+        this.speed = 3;
     }
 }
 
@@ -32,29 +27,40 @@ export class EntityManager {
         this.world = world;
         this.cars = [];
         this.pedestrians = [];
-        this.carGeo = new THREE.BoxGeometry(1.5, 1, 3);
-        this.pedGeo = new THREE.BoxGeometry(0.5, 1, 0.5);
+        
+        // New Larger Scales
+        this.carGeo = new THREE.BoxGeometry(2, 1.5, 4.5);
+        this.pedGeo = new THREE.BoxGeometry(0.6, 1.7, 0.6);
+        
         this.stats = { cars: 0, pop: 0 };
     }
 
     init() {
-        // Prepare materials
         this.carMats = [
-            new THREE.MeshLambertMaterial({ color: 0xff0000 }),
-            new THREE.MeshLambertMaterial({ color: 0x0000ff }),
-            new THREE.MeshLambertMaterial({ color: 0xffffff }),
-            new THREE.MeshLambertMaterial({ color: 0x222222 })
+            new THREE.MeshLambertMaterial({ color: 0xe74c3c }),
+            new THREE.MeshLambertMaterial({ color: 0x3498db }),
+            new THREE.MeshLambertMaterial({ color: 0xf1c40f }),
+            new THREE.MeshLambertMaterial({ color: 0xecf0f1 }),
+            new THREE.MeshLambertMaterial({ color: 0x2c3e50 })
         ];
-        this.pedMat = new THREE.MeshLambertMaterial({ color: 0xffddaa });
+        this.pedMat = new THREE.MeshLambertMaterial({ color: 0xe67e22 });
     }
 
     spawnInitialPopulation() {
-        // Spawn parked cars
-        for (let i = 0; i < 20; i++) {
-            this.spawnCar(true);
+        // Clear old
+        this.clear();
+
+        // Spawn Cars on Lanes
+        const lanes = this.world.city.lanes;
+        if(lanes.length > 0) {
+            for(let i=0; i<40; i++) {
+                const lane = lanes[Math.floor(Math.random() * lanes.length)];
+                this.spawnCar(lane);
+            }
         }
-        // Spawn pedestrians
-        for (let i = 0; i < 15; i++) {
+
+        // Spawn Pedestrians
+        for(let i=0; i<30; i++) {
             this.spawnPedestrian();
         }
     }
@@ -67,205 +73,154 @@ export class EntityManager {
         this.pedestrians = [];
     }
 
-    spawnCar(parked = false) {
+    spawnCar(lane) {
         const mat = this.carMats[Math.floor(Math.random() * this.carMats.length)];
         const mesh = new THREE.Mesh(this.carGeo, mat);
         mesh.castShadow = true;
         
-        const pos = this.world.city.getRandomRoadPoint();
+        const car = new Car(mesh, lane);
+        car.t = Math.random(); // Random spot on lane
+        
+        // Set init pos
+        const pos = new THREE.Vector3().lerpVectors(lane.start, lane.end, car.t);
         mesh.position.copy(pos);
-        mesh.position.y = 0.5;
-
-        const car = new Car(mesh);
-        if (parked) {
-            car.state = 'PARKED';
-            // Move to side of road
-            // snap to nearest axis
-            if (Math.random() > 0.5) {
-                mesh.rotation.y = 0;
-                mesh.position.x += 1.5; // Offset to curb
-            } else {
-                mesh.rotation.y = Math.PI/2;
-                mesh.position.z += 1.5;
-            }
-        } else {
-            car.state = 'DRIVING';
-            car.speed = 5;
-            this.pickNewDriveTarget(car);
-        }
-
+        mesh.position.y = 1;
+        mesh.lookAt(lane.end);
+        
         this.world.scene.add(mesh);
         this.cars.push(car);
-        return car;
     }
 
-    spawnPedestrian(pos = null) {
+    spawnPedestrian() {
         const mesh = new THREE.Mesh(this.pedGeo, this.pedMat);
         mesh.castShadow = true;
         
-        if (!pos) {
-            // Find a random spot not on road (ideally)
-            pos = this.world.city.getRandomRoadPoint();
-            // Offset to sidewalk
-            pos.x += (Math.random() > 0.5 ? 2.5 : -2.5);
-            pos.z += (Math.random() > 0.5 ? 2.5 : -2.5);
-        }
-        
-        mesh.position.copy(pos);
-        mesh.position.y = 0.5;
+        // Random spot near center of blocks
+        const range = 200;
+        mesh.position.set(
+            (Math.random()-0.5)*range, 
+            1, 
+            (Math.random()-0.5)*range
+        );
         
         const ped = new Pedestrian(mesh);
-        this.pickWanderTarget(ped);
+        this.pickPedTarget(ped);
         
         this.world.scene.add(mesh);
         this.pedestrians.push(ped);
-        return ped;
+    }
+    
+    pickPedTarget(ped) {
+        // Walk to random point
+        ped.target.set(
+            ped.mesh.position.x + (Math.random()-0.5)*40,
+            1,
+            ped.mesh.position.z + (Math.random()-0.5)*40
+        );
     }
 
     update(dt) {
         this.updateCars(dt);
         this.updatePedestrians(dt);
         this.stats.cars = this.cars.length;
-        this.stats.pop = this.pedestrians.filter(p => p.state !== 'DRIVING').length;
+        this.stats.pop = this.pedestrians.length;
     }
 
     updateCars(dt) {
+        const LANE_LENGTH = this.world.city.cellSize - this.world.city.roadWidth;
+        
         this.cars.forEach(car => {
-            if (car.state === 'PARKED') return;
-
-            // Move forward
-            const dist = car.speed * dt;
-            const move = car.dir.clone().multiplyScalar(dist);
-            car.mesh.position.add(move);
-
-            // Simple boundary/turning logic
-            if (car.mesh.position.distanceTo(car.target) < 1) {
-                if (car.state === 'FINDING_SPOT') {
-                    // Park here
-                    car.state = 'PARKED';
-                    car.speed = 0;
-                    // Align to curb visual
-                    // Eject passenger
-                    this.spawnPedestrian(car.mesh.position.clone().add(new THREE.Vector3(1.5, 0, 0)));
-                } else {
-                    this.pickNewDriveTarget(car);
-                    // Occasionally decide to park
-                    if (Math.random() < 0.1) {
-                        car.state = 'FINDING_SPOT';
+            if (car.state === 'DRIVING') {
+                car.t += (car.speed * dt) / LANE_LENGTH; // Approx
+                
+                if (car.t >= 1) {
+                    // Reached Intersection
+                    car.t = 1;
+                    const intersection = car.currentLane.to;
+                    
+                    // Check Lights
+                    const isHorizontal = Math.abs(car.currentLane.dir.x) > 0.5;
+                    const greenForMe = (intersection.lights.state === 'EW_GREEN' && isHorizontal) ||
+                                       (intersection.lights.state === 'NS_GREEN' && !isHorizontal);
+                    
+                    if (greenForMe) {
+                        // Pick new lane
+                        const nextLanes = this.world.city.lanes.filter(l => l.from === intersection && l !== car.currentLane);
+                        if (nextLanes.length > 0) {
+                            const nextLane = nextLanes[Math.floor(Math.random() * nextLanes.length)];
+                            
+                            // Setup Curve
+                            car.state = 'TURNING';
+                            car.nextLane = nextLane;
+                            car.curveT = 0;
+                            
+                            // Quadratic Bezier: Start, Control, End
+                            const p0 = car.currentLane.end;
+                            const p2 = nextLane.start;
+                            // Control point is intersection center
+                            const p1 = intersection.pos; 
+                            
+                            car.curve = new THREE.QuadraticBezierCurve3(p0, p1, p2);
+                        } else {
+                            // Dead end? U-turn or despawn. Just wrap t=0
+                            car.t = 0;
+                        }
+                    } else {
+                        car.state = 'WAITING';
                     }
+                } else {
+                    // Moving on lane
+                    const pos = new THREE.Vector3().lerpVectors(car.currentLane.start, car.currentLane.end, car.t);
+                    car.mesh.position.copy(pos);
+                    car.mesh.position.y = 1;
+                    car.mesh.lookAt(car.currentLane.end);
                 }
             }
-            
-            // Map boundaries wrap
-            if(Math.abs(car.mesh.position.x) > 40) car.mesh.position.x *= -0.95;
-            if(Math.abs(car.mesh.position.z) > 40) car.mesh.position.z *= -0.95;
+            else if (car.state === 'WAITING') {
+                // Check light again
+                const intersection = car.currentLane.to;
+                const isHorizontal = Math.abs(car.currentLane.dir.x) > 0.5;
+                const greenForMe = (intersection.lights.state === 'EW_GREEN' && isHorizontal) ||
+                                   (intersection.lights.state === 'NS_GREEN' && !isHorizontal);
+                
+                if (greenForMe) {
+                    car.state = 'DRIVING'; // Resume logic next frame
+                }
+            }
+            else if (car.state === 'TURNING') {
+                car.curveT += dt * 1.5; // Turn speed
+                if (car.curveT >= 1) {
+                    // Finished Turn
+                    car.state = 'DRIVING';
+                    car.currentLane = car.nextLane;
+                    car.t = 0;
+                } else {
+                    const pos = car.curve.getPoint(car.curveT);
+                    car.mesh.position.copy(pos);
+                    car.mesh.position.y = 1;
+                    // Look ahead
+                    const look = car.curve.getPoint(Math.min(1, car.curveT + 0.1));
+                    car.mesh.lookAt(look);
+                }
+            }
         });
-    }
-
-    pickNewDriveTarget(car) {
-        // Simple Manhattan movement: Pick a point further along an axis
-        const axes = [new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1)];
-        // Prefer current direction
-        if (Math.random() > 0.3) {
-            // keep going same axis
-        } else {
-            // switch axis
-            const axis = axes[Math.floor(Math.random()*axes.length)];
-            car.dir.copy(axis);
-            
-            // Rotate mesh
-            if(car.dir.z === 1) car.mesh.rotation.y = 0;
-            if(car.dir.z === -1) car.mesh.rotation.y = Math.PI;
-            if(car.dir.x === 1) car.mesh.rotation.y = Math.PI/2;
-            if(car.dir.x === -1) car.mesh.rotation.y = -Math.PI/2;
-        }
-        
-        car.target.copy(car.mesh.position).add(car.dir.clone().multiplyScalar(20));
-        car.speed = 5;
     }
 
     updatePedestrians(dt) {
         this.pedestrians.forEach(ped => {
-            if (ped.state === 'DRIVING') {
-                ped.mesh.visible = false;
-                ped.mesh.position.copy(ped.targetCar.mesh.position); // Follow car just in case we need to respawn
-                return;
+            const dist = ped.mesh.position.distanceTo(ped.target);
+            if(dist < 1) {
+                this.pickPedTarget(ped);
             } else {
-                ped.mesh.visible = true;
-            }
-
-            const distToTarget = ped.mesh.position.distanceTo(ped.target);
-            
-            // Move
-            if (distToTarget > 0.5) {
                 const dir = new THREE.Vector3().subVectors(ped.target, ped.mesh.position).normalize();
                 ped.mesh.position.add(dir.multiplyScalar(ped.speed * dt));
                 ped.mesh.lookAt(ped.target);
-            } else {
-                // Reached target
-                if (ped.state === 'GOING_TO_CAR') {
-                    // Enter car
-                    if (ped.targetCar && ped.targetCar.state === 'PARKED') {
-                        ped.state = 'DRIVING';
-                        ped.targetCar.state = 'DRIVING';
-                        ped.targetCar.passenger = ped;
-                        this.pickNewDriveTarget(ped.targetCar);
-                    } else {
-                        // Car left or invalid, wander
-                        this.pickWanderTarget(ped);
-                    }
-                } else {
-                    // Was wandering, choose new action
-                    if (Math.random() < 0.3) {
-                        // Try to find a car
-                        const parkedCar = this.findNearestParkedCar(ped.mesh.position);
-                        if (parkedCar) {
-                            ped.state = 'GOING_TO_CAR';
-                            ped.targetCar = parkedCar;
-                            ped.target.copy(parkedCar.mesh.position);
-                        } else {
-                            this.pickWanderTarget(ped);
-                        }
-                    } else {
-                        this.pickWanderTarget(ped);
-                    }
-                }
             }
         });
     }
-
-    pickWanderTarget(ped) {
-        ped.state = 'WANDERING';
-        ped.targetCar = null;
-        // Random nearby point
-        ped.target.x = ped.mesh.position.x + (Math.random() * 20 - 10);
-        ped.target.z = ped.mesh.position.z + (Math.random() * 20 - 10);
-        
-        // Clamp to city bounds roughly
-        ped.target.x = Math.max(-30, Math.min(30, ped.target.x));
-        ped.target.z = Math.max(-30, Math.min(30, ped.target.z));
-    }
-
-    findNearestParkedCar(pos) {
-        let best = null;
-        let bestDist = 20; // Search radius
-        for (const car of this.cars) {
-            if (car.state === 'PARKED') {
-                const d = pos.distanceTo(car.mesh.position);
-                if (d < bestDist) {
-                    bestDist = d;
-                    best = car;
-                }
-            }
-        }
-        return best;
-    }
-
+    
     getRandomPedestrian() {
-        if (this.pedestrians.length === 0) return null;
-        // Filter active ones (visible)
-        const active = this.pedestrians.filter(p => p.state !== 'DRIVING');
-        if (active.length === 0) return this.pedestrians[0];
-        return active[Math.floor(Math.random() * active.length)];
+        if(this.pedestrians.length > 0) return this.pedestrians[Math.floor(Math.random()*this.pedestrians.length)];
+        return null;
     }
 }

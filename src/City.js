@@ -3,126 +3,357 @@ import * as THREE from 'three';
 export class City {
     constructor() {
         this.group = new THREE.Group();
-        this.gridSize = 20; // 20x20 units total area
-        this.blockSize = 4;
-        this.roadWidth = 2;
-        this.roads = []; // Array of {x, z, width, length, direction}
-        this.spawnPoints = [];
+        
+        // Scale Config
+        this.cellSize = 80; // Total cell size (Road + Block)
+        this.roadWidth = 16; // 8 units per lane roughly
+        this.blockSize = this.cellSize - this.roadWidth;
+        this.mapRadius = 5; // How many chunks out from center
+        
+        // Graph for Traffic
+        this.intersections = []; 
+        this.lanes = [];
+        this.trafficLights = [];
+        this.parkingSpots = [];
     }
 
     generate() {
-        // Clear existing
+        // Clear
         while(this.group.children.length > 0){ 
             this.group.remove(this.group.children[0]); 
         }
-        this.roads = [];
-        this.spawnPoints = [];
+        this.intersections = [];
+        this.lanes = [];
+        this.trafficLights = [];
+        this.parkingSpots = [];
 
-        // Simple Grid Layout
-        const numBlocks = 6;
-        const totalSize = numBlocks * (this.blockSize + this.roadWidth);
-        const offset = totalSize / 2;
+        // Materials
+        const matRoad = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
+        const matSidewalk = new THREE.MeshLambertMaterial({ color: 0x7f8c8d });
+        const matGrass = new THREE.MeshLambertMaterial({ color: 0x27ae60 });
+        const matMarking = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        
+        // Create Intersection Nodes
+        // Grid from -radius to +radius
+        for(let x = -this.mapRadius; x <= this.mapRadius; x++) {
+            for(let z = -this.mapRadius; z <= this.mapRadius; z++) {
+                // Determine Density
+                const dist = Math.sqrt(x*x + z*z);
+                let type = 'CITY';
+                if(dist > 2) type = 'SUBURB';
+                if(dist > 4) type = 'COUNTRY';
 
-        const materialGround = new THREE.MeshLambertMaterial({ color: 0x333333 }); // Road color
-        const materialSidewalk = new THREE.MeshLambertMaterial({ color: 0x999999 });
-        const buildingColors = [0xf1c40f, 0xe74c3c, 0x3498db, 0x2ecc71, 0x9b59b6, 0xffffff];
+                const wx = x * this.cellSize;
+                const wz = z * this.cellSize;
 
-        // Ground Plane (Base)
-        const planeGeo = new THREE.PlaneGeometry(totalSize + 20, totalSize + 20);
-        const plane = new THREE.Mesh(planeGeo, new THREE.MeshLambertMaterial({ color: 0x2c3e50 }));
-        plane.rotation.x = -Math.PI / 2;
-        plane.position.y = -0.1;
-        this.group.add(plane);
+                // Create Intersection Data
+                const intersection = {
+                    id: `${x}:${z}`,
+                    x: x, z: z,
+                    pos: new THREE.Vector3(wx, 0, wz),
+                    type: type,
+                    lights: { state: 'NS_GREEN', timer: 0 },
+                    outLanes: [] // Lanes starting from here
+                };
+                this.intersections.push(intersection);
 
-        // Generate Grid
-        for (let x = 0; x < numBlocks; x++) {
-            for (let z = 0; z < numBlocks; z++) {
-                const px = x * (this.blockSize + this.roadWidth) - offset;
-                const pz = z * (this.blockSize + this.roadWidth) - offset;
+                // Visuals for this Cell (The road to the right and bottom, and the block content)
+                // Actually, let's visualize the block at (x,z) and the roads surrounding it.
+                // We'll treat (x,z) as the intersection center.
+                
+                // Intersection Mesh (Ground)
+                const iGeo = new THREE.PlaneGeometry(this.roadWidth, this.roadWidth);
+                const iMesh = new THREE.Mesh(iGeo, matRoad);
+                iMesh.rotation.x = -Math.PI/2;
+                iMesh.position.set(wx, 0.05, wz);
+                iMesh.receiveShadow = true;
+                this.group.add(iMesh);
 
-                // Sidewalk/Block Base
-                const swGeo = new THREE.BoxGeometry(this.blockSize, 0.2, this.blockSize);
-                const sw = new THREE.Mesh(swGeo, materialSidewalk);
-                sw.position.set(px + this.blockSize/2, 0.1, pz + this.blockSize/2);
-                sw.receiveShadow = true;
-                this.group.add(sw);
-
-                // Buildings (randomize)
-                if (Math.random() > 0.2) {
-                    const height = Math.random() * 5 + 2;
-                    const bGeo = new THREE.BoxGeometry(this.blockSize - 0.5, height, this.blockSize - 0.5);
-                    const color = buildingColors[Math.floor(Math.random() * buildingColors.length)];
-                    const bMat = new THREE.MeshLambertMaterial({ color: color });
-                    const building = new THREE.Mesh(bGeo, bMat);
-                    building.position.set(px + this.blockSize/2, height/2 + 0.2, pz + this.blockSize/2);
-                    building.castShadow = true;
-                    building.receiveShadow = true;
-                    this.group.add(building);
-                } else {
-                    // Park/Empty lot
-                    const tGeo = new THREE.ConeGeometry(0.5, 2, 8);
-                    const tMat = new THREE.MeshLambertMaterial({ color: 0x27ae60 });
-                    const tree = new THREE.Mesh(tGeo, tMat);
-                    tree.position.set(px + this.blockSize/2, 1, pz + this.blockSize/2);
-                    this.group.add(tree);
+                // Add Traffic Lights geometry if City
+                if (type === 'CITY' || type === 'SUBURB') {
+                    this.createTrafficLightVisuals(intersection);
+                    this.trafficLights.push(intersection);
                 }
             }
         }
-        
-        // Define Roads for navigation (Grid lines)
-        // Vertical roads
-        for(let x = 0; x <= numBlocks; x++) {
-            const rx = x * (this.blockSize + this.roadWidth) - offset - this.roadWidth/2;
-            this.roads.push({
-                x: rx, z: 0, 
-                width: this.roadWidth, 
-                length: totalSize, 
-                vertical: true
-            });
-            // Visual road is just the gap, but we can add markings if needed
+
+        // Link Intersections and Create Roads/Lanes
+        this.intersections.forEach(node => {
+            // Link to Right (x+1)
+            if (node.x < this.mapRadius) {
+                const neighbor = this.getIntersection(node.x + 1, node.z);
+                if (neighbor) this.createRoadSegment(node, neighbor, 'HORIZONTAL');
+            }
+            // Link to Bottom (z+1)
+            if (node.z < this.mapRadius) {
+                const neighbor = this.getIntersection(node.x, node.z + 1);
+                if (neighbor) this.createRoadSegment(node, neighbor, 'VERTICAL');
+            }
+        });
+
+        // Fill in Blocks (The space between intersections)
+        // A block is "top-left" of the intersection? No, let's place blocks in the centers of grid cells.
+        // Grid cell (x,z) to (x+1, z+1) contains a block.
+        for(let x = -this.mapRadius; x < this.mapRadius; x++) {
+            for(let z = -this.mapRadius; z < this.mapRadius; z++) {
+                this.generateBlock(x, z);
+            }
         }
-        // Horizontal roads
-        for(let z = 0; z <= numBlocks; z++) {
-            const rz = z * (this.blockSize + this.roadWidth) - offset - this.roadWidth/2;
-            this.roads.push({
-                x: 0, z: rz,
-                width: totalSize,
-                length: this.roadWidth,
-                vertical: false
+    }
+
+    getIntersection(x, z) {
+        return this.intersections.find(i => i.x === x && i.z === z);
+    }
+
+    createRoadSegment(nodeA, nodeB, orientation) {
+        const matRoad = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
+        const matLine = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        
+        // Geometry
+        const length = this.cellSize - this.roadWidth;
+        const midX = (nodeA.pos.x + nodeB.pos.x) / 2;
+        const midZ = (nodeA.pos.z + nodeB.pos.z) / 2;
+        
+        const roadGeo = new THREE.PlaneGeometry(
+            orientation === 'HORIZONTAL' ? length : this.roadWidth,
+            orientation === 'HORIZONTAL' ? this.roadWidth : length
+        );
+        const road = new THREE.Mesh(roadGeo, matRoad);
+        road.rotation.x = -Math.PI/2;
+        road.position.set(midX, 0.05, midZ);
+        road.receiveShadow = true;
+        this.group.add(road);
+
+        // Center dashed line
+        const lineGeo = new THREE.PlaneGeometry(
+            orientation === 'HORIZONTAL' ? length : 0.5,
+            orientation === 'HORIZONTAL' ? 0.5 : length
+        );
+        const line = new THREE.Mesh(lineGeo, matLine);
+        line.rotation.x = -Math.PI/2;
+        line.position.set(midX, 0.06, midZ);
+        this.group.add(line);
+
+        // Logic: Lanes
+        // Lane 1: A -> B (Right side relative to A)
+        // Lane 2: B -> A (Right side relative to B)
+        const offset = this.roadWidth / 4; // Center of the right lane
+
+        if (orientation === 'HORIZONTAL') {
+            // A -> B (Moving +X, z offset +)
+            this.lanes.push({
+                start: new THREE.Vector3(nodeA.pos.x + this.roadWidth/2, 0, nodeA.pos.z + offset),
+                end: new THREE.Vector3(nodeB.pos.x - this.roadWidth/2, 0, nodeB.pos.z + offset),
+                dir: new THREE.Vector3(1, 0, 0),
+                from: nodeA, to: nodeB
+            });
+            // B -> A (Moving -X, z offset -)
+            this.lanes.push({
+                start: new THREE.Vector3(nodeB.pos.x - this.roadWidth/2, 0, nodeB.pos.z - offset),
+                end: new THREE.Vector3(nodeA.pos.x + this.roadWidth/2, 0, nodeA.pos.z - offset),
+                dir: new THREE.Vector3(-1, 0, 0),
+                from: nodeB, to: nodeA
+            });
+        } else {
+            // A -> B (Moving +Z, x offset -)
+            this.lanes.push({
+                start: new THREE.Vector3(nodeA.pos.x - offset, 0, nodeA.pos.z + this.roadWidth/2),
+                end: new THREE.Vector3(nodeB.pos.x - offset, 0, nodeB.pos.z - this.roadWidth/2),
+                dir: new THREE.Vector3(0, 0, 1),
+                from: nodeA, to: nodeB
+            });
+            // B -> A (Moving -Z, x offset +)
+            this.lanes.push({
+                start: new THREE.Vector3(nodeB.pos.x + offset, 0, nodeB.pos.z - this.roadWidth/2),
+                end: new THREE.Vector3(nodeA.pos.x + offset, 0, nodeA.pos.z + this.roadWidth/2),
+                dir: new THREE.Vector3(0, 0, -1),
+                from: nodeB, to: nodeA
             });
         }
     }
 
-    getRandomRoadPoint() {
-        // Pick a random road
-        const road = this.roads[Math.floor(Math.random() * this.roads.length)];
-        let x, z;
-        if (road.vertical) {
-            x = road.x;
-            z = (Math.random() * road.length) - (road.length/2);
+    generateBlock(gridX, gridZ) {
+        // Center of the block
+        const cx = (gridX + 0.5) * this.cellSize;
+        const cz = (gridZ + 0.5) * this.cellSize;
+        
+        // Determine Density/Type based on center of block
+        const dist = Math.sqrt(cx*cx + cz*cz) / this.cellSize;
+        
+        // Base Ground (Sidewalk or Grass)
+        const size = this.blockSize;
+        let isCountry = dist > 4;
+        let isSuburb = dist > 2 && !isCountry;
+        
+        const matGround = isCountry ? 
+            new THREE.MeshLambertMaterial({ color: 0x3b7d38 }) : 
+            new THREE.MeshLambertMaterial({ color: 0x95a5a6 }); // Sidewalk gray
+
+        const baseGeo = new THREE.BoxGeometry(size, 0.5, size);
+        const base = new THREE.Mesh(baseGeo, matGround);
+        base.position.set(cx, 0.25, cz);
+        base.receiveShadow = true;
+        this.group.add(base);
+
+        if (isCountry) {
+            // Random Trees
+            const numTrees = Math.floor(Math.random() * 10);
+            for(let i=0; i<numTrees; i++) {
+                const tx = cx + (Math.random() - 0.5) * (size - 2);
+                const tz = cz + (Math.random() - 0.5) * (size - 2);
+                const tree = this.createTree();
+                tree.position.set(tx, 0.5, tz);
+                this.group.add(tree);
+            }
+            return;
+        }
+
+        // City/Suburb: Buildings or Parking
+        // 10% chance of Parking Lot in city
+        if (Math.random() < 0.1 && !isSuburb) {
+            // Parking Lot
+            const lotGeo = new THREE.PlaneGeometry(size - 4, size - 4);
+            const lotMat = new THREE.MeshLambertMaterial({ color: 0x34495e });
+            const lot = new THREE.Mesh(lotGeo, lotMat);
+            lot.rotation.x = -Math.PI/2;
+            lot.position.set(cx, 0.52, cz);
+            this.group.add(lot);
+            
+            // Add parking spots for spawn logic
+            for(let px = -1; px <= 1; px+=2) {
+                for(let pz = -1; pz <= 1; pz++) {
+                    this.parkingSpots.push(new THREE.Vector3(
+                        cx + px * 10, 0.5, cz + pz * 10
+                    ));
+                }
+            }
+            return;
+        }
+
+        // Buildings
+        // Subdivide block? Or one big building?
+        // Let's do a mix.
+        const numBuildings = isSuburb ? 4 : (Math.random() > 0.5 ? 1 : 4);
+        
+        if (numBuildings === 1) {
+            // Skyscraper or large building
+            const h = isSuburb ? 6 + Math.random()*5 : 20 + Math.random() * 40;
+            const bSize = size - 6;
+            this.createBuilding(cx, 0.5, cz, bSize, h, bSize);
         } else {
-            x = (Math.random() * road.width) - (road.width/2);
-            z = road.z;
+            // 4 quadrants
+            const bSize = (size / 2) - 4;
+            const hBase = isSuburb ? 5 : 15;
+            
+            [[1,1], [1,-1], [-1,1], [-1,-1]].forEach(([qx, qz]) => {
+                if (Math.random() > 0.3) {
+                    const h = hBase + Math.random() * 10;
+                    this.createBuilding(
+                        cx + qx * (size/4), 
+                        0.5, 
+                        cz + qz * (size/4), 
+                        bSize, h, bSize
+                    );
+                }
+            });
         }
-        return new THREE.Vector3(x, 0.2, z);
     }
-    
-    // Check if position is on sidewalk
-    isSidewalk(pos) {
-        // Simple heuristic: if not on road, it's sidewalk or building
-        // But for this simple grid, we just check against road bounds
-        const roadThreshold = 1.2; // Slightly wider than road center
+
+    createBuilding(x, y, z, w, h, d) {
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const col = [0xbdc3c7, 0xecf0f1, 0x95a5a6][Math.floor(Math.random()*3)];
+        const mat = new THREE.MeshLambertMaterial({ color: col });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(x, y + h/2, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.group.add(mesh);
+    }
+
+    createTree() {
+        const group = new THREE.Group();
+        const trunkGeo = new THREE.CylinderGeometry(0.5, 0.8, 3, 6);
+        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5d4037 });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.y = 1.5;
         
-        let onRoad = false;
-        // Check vertical roads
-        for(let x = -30; x <= 30; x+=6) { // 4+2 spacing roughly
-             if (Math.abs(pos.x - x) < 1.5) onRoad = true;
-        }
-        // Check horizontal
-        for(let z = -30; z <= 30; z+=6) {
-             if (Math.abs(pos.z - z) < 1.5) onRoad = true;
-        }
+        const leavesGeo = new THREE.ConeGeometry(3, 6, 8);
+        const leavesMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
+        const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+        leaves.position.y = 4.5;
         
-        return !onRoad;
+        group.add(trunk);
+        group.add(leaves);
+        return group;
+    }
+
+    createTrafficLightVisuals(node) {
+        const poleGeo = new THREE.CylinderGeometry(0.5, 0.5, 12);
+        const poleMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+        const boxGeo = new THREE.BoxGeometry(2, 4, 2);
+        const boxMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+        
+        // Place 4 poles at corners
+        const offset = this.roadWidth / 2 + 1;
+        
+        const poles = [
+            { x: offset, z: offset },
+            { x: -offset, z: -offset },
+            { x: offset, z: -offset },
+            { x: -offset, z: offset }
+        ];
+
+        poles.forEach(p => {
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.set(node.pos.x + p.x, 6, node.pos.z + p.z);
+            this.group.add(pole);
+            
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set(0, 5, 0); // relative to pole top? No, absolute
+            box.position.copy(pole.position);
+            box.position.y = 10;
+            this.group.add(box);
+            
+            // Store ref to box to change color? 
+            // For simplicity, we just simulate logic, visuals are static grey boxes with colored spheres for now
+            // Adding a sphere that changes color would be better
+            const lightGeo = new THREE.SphereGeometry(0.8);
+            const lightMesh = new THREE.Mesh(lightGeo, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+            lightMesh.position.set(0, 0, 0.8); // Face out?
+            // This is getting complex for rotation. Let's just put a floating glowing orb in center of intersection.
+        });
+        
+        // Central Hanging Light (Simpler visual indicator)
+        const centerGeo = new THREE.BoxGeometry(2, 2, 2);
+        node.mesh = new THREE.Mesh(centerGeo, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+        node.mesh.position.set(node.pos.x, 10, node.pos.z);
+        this.group.add(node.mesh);
+    }
+
+    update(dt) {
+        // Traffic Lights Cycle
+        const cycleTime = 10; // seconds
+        this.trafficLights.forEach(node => {
+            node.lights.timer += dt;
+            if (node.lights.timer > cycleTime) {
+                node.lights.timer = 0;
+                // Toggle
+                node.lights.state = (node.lights.state === 'NS_GREEN') ? 'EW_GREEN' : 'NS_GREEN';
+                
+                // Update visual
+                if (node.mesh) {
+                    node.mesh.material.color.setHex(node.lights.state === 'NS_GREEN' ? 0x00ff00 : 0xff0000);
+                    // Green means NS is Green. So if we are NS lane, we go.
+                    // Visual explanation: Green box = NS Green. Red box = EW Green.
+                }
+            }
+        });
+    }
+
+    getRandomRoadPoint() {
+        // Find a random lane
+        if (this.lanes.length === 0) return new THREE.Vector3();
+        const lane = this.lanes[Math.floor(Math.random() * this.lanes.length)];
+        return lane.start.clone();
     }
 }
