@@ -29,9 +29,6 @@ export class City {
 
         // Materials
         const matRoad = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
-        const matSidewalk = new THREE.MeshLambertMaterial({ color: 0x7f8c8d });
-        const matGrass = new THREE.MeshLambertMaterial({ color: 0x27ae60 });
-        const matMarking = new THREE.MeshBasicMaterial({ color: 0xffffff });
         
         // Create Intersection Nodes
         // Grid from -radius to +radius
@@ -133,6 +130,10 @@ export class City {
         line.rotation.x = -Math.PI/2;
         line.position.set(midX, 0.06, midZ);
         this.group.add(line);
+
+        // Crosswalks
+        // Add white stripes at both ends of the road segment
+        this.createCrosswalks(midX, midZ, length, orientation);
 
         // Logic: Lanes
         // Lane 1: A -> B (Right side relative to A)
@@ -268,6 +269,59 @@ export class City {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.group.add(mesh);
+    }
+
+    createCrosswalks(midX, midZ, length, orientation) {
+        const stripeGeo = new THREE.PlaneGeometry(
+            orientation === 'HORIZONTAL' ? 2 : this.roadWidth * 0.8, 
+            orientation === 'HORIZONTAL' ? this.roadWidth * 0.8 : 2
+        );
+        const matWhite = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+        
+        // We want stripes. Let's just do a solid transparent white block for now to represent the zone, 
+        // or a group of stripes. Let's do a group of stripes.
+        const numStripes = 6;
+        const stripeW = orientation === 'HORIZONTAL' ? 1.5 : (this.roadWidth / numStripes) * 0.6;
+        const stripeH = orientation === 'HORIZONTAL' ? (this.roadWidth / numStripes) * 0.6 : 1.5;
+        
+        const group = new THREE.Group();
+        
+        // Create a pattern of stripes
+        for(let i=0; i<numStripes; i++) {
+            const sGeo = new THREE.PlaneGeometry(stripeW, stripeH);
+            const sMesh = new THREE.Mesh(sGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            sMesh.rotation.x = -Math.PI/2;
+            
+            // Position within the group
+            // If Horizontal Road: stripes span vertically (z), spaced along z
+            // If Vertical Road: stripes span horizontally (x), spaced along x
+            
+            let lx=0, lz=0;
+            const spread = this.roadWidth * 0.8;
+            const offset = (i / (numStripes - 1)) * spread - spread/2;
+            
+            if (orientation === 'HORIZONTAL') {
+                lz = offset;
+            } else {
+                lx = offset;
+            }
+            sMesh.position.set(lx, 0, lz);
+            group.add(sMesh);
+        }
+
+        // Place two groups: One at start, one at end
+        const dist = length / 2 - 2; // 2 units from the intersection edge
+        
+        const c1 = group.clone();
+        if (orientation === 'HORIZONTAL') c1.position.set(midX - dist, 0.07, midZ);
+        else c1.position.set(midX, 0.07, midZ - dist);
+        
+        const c2 = group.clone();
+        if (orientation === 'HORIZONTAL') c2.position.set(midX + dist, 0.07, midZ);
+        else c2.position.set(midX, 0.07, midZ + dist);
+        
+        this.group.add(c1);
+        this.group.add(c2);
     }
 
     createTree() {
