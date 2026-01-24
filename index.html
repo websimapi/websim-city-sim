@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>City Sim</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://esm.sh/three@0.160.0",
+                "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="game-container"></div>
+    
+    <div id="ui-overlay">
+        <div id="title-screen">
+            <h1 class="title">METRO LOOP</h1>
+            <div class="menu">
+                <button id="btn-continue" class="btn hidden">Continue</button>
+                <button id="btn-start" class="btn">New City</button>
+                <button id="btn-settings" class="btn">Settings</button>
+            </div>
+        </div>
+        
+        <div id="settings-screen" class="hidden">
+            <h2>Settings</h2>
+            <div class="setting-row">
+                <label>Traffic Volume</label>
+                <input type="range" min="0" max="100" value="50" id="setting-traffic">
+            </div>
+            <button id="btn-back" class="btn">Back</button>
+        </div>
+
+        <div id="hud" class="hidden">
+            <button id="btn-menu" class="btn-icon">☰</button>
+            <div class="stats">
+                <div>Pop: <span id="stat-pop">0</span></div>
+                <div>Cars: <span id="stat-cars">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
